@@ -56,6 +56,18 @@ unsigned int n_vertices(grafo g);
 unsigned int n_arestas(grafo g);
 
 //------------------------------------------------------------------------------
+// devolve o vértice de nome 'nome' em g
+//         ou
+//         NULL, caso não exista tal vertice
+
+vertice vertice_nome(grafo g, char *nome);
+
+//------------------------------------------------------------------------------
+// devolve o nome de v
+
+char *nome(vertice v);
+
+//------------------------------------------------------------------------------
 // devolve o número mínimo k de trilhas necessárias para cobrir o grafo g
 //
 // observe que 
@@ -77,7 +89,7 @@ unsigned int n_arestas(grafo g);
 //     2. cobertura[i][l] == NULL, e
 //     3. cobertura[i][j-1] é vizinho de cobertura[i][j] em g, para cada 0 < j < l
 
-unsigned int cobertura_por_trilhas(grafo g, vertice *cobertura[]);
+unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[]);
 
 //------------------------------------------------------------------------------
 #endif

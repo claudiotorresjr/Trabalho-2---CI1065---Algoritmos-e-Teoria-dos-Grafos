@@ -4,17 +4,17 @@
 
 #include "grafo.h"
 /*------------------------------------------------------------------------------
-        Struct para a fila de vertices de grau impar
-    --> struct vertice *head; ponteiro para o inicio da fila
-    --> struct vertice *tail; ponteiro para o fim da fila
+        Struct para a lista de vertices de grau impar
+    --> struct vertice *head; ponteiro para o inicio da lista
+    --> struct vertice *tail; ponteiro para o fim da lista
 ------------------------------------------------------------------------------*/
-struct filaVertices
+struct listaVertices
 {
 	struct _vertice *head;
 	unsigned int tam;
 
 }__attribute__((packed));
-typedef struct filaVertices *filaVertices;
+typedef struct listaVertices *listaVertices;
 
 /*------------------------------------------------------------------------------
         Struct para a lista de adjacencia
@@ -40,8 +40,9 @@ struct _grafo
 	unsigned int numV; 
 	unsigned int numA;
 	unsigned int achouCiclo;
+	struct _vertice *raizArvore;
 	struct AdjList *array;
-}__attribute__((packed));;
+}__attribute__((packed));
 
 /*------------------------------------------------------------------------------
         Struct para o vertice
@@ -52,6 +53,7 @@ struct _grafo
        +-1 vertice v adicionado a G 
     --> unsigned int grau; grau do vertice
 	--> char *nome; nome do vertice
+	--> int coringa: se 1, indica que o vertice nao faz parte do arquivo do grafo
 	--> struct vertice *next; ponteiro para o proximo vertice
 	--> struct vertice *pai; ponteiro para o pai do vertice
 ------------------------------------------------------------------------------*/
@@ -62,11 +64,11 @@ struct _vertice
 	int pos;
 	unsigned int grau;
 	char *nome;
+	int coringa;
 	struct _vertice *next;
 	struct _vertice *pai;
 
-};
-
+}__attribute__((packed));
 
 /*------------------------------------------------------------------------------
         Coloca os pares de vertices na sua devida lista de adjacencia
@@ -103,46 +105,61 @@ grafo cria_grafo(void);
 void add_aresta(grafo g, char *verticeA, char *verticeB);
 
 /*------------------------------------------------------------------------------
-        Inicia uma fila vazia
+        Inicia uma lista vazia
 ------------------------------------------------------------------------------*/
-filaVertices iniciaFila(void);
+listaVertices inicialista(void);
 
 /*------------------------------------------------------------------------------
-        Insere um vertice vert na fila
+        Insere um vertice vert na lista
 ------------------------------------------------------------------------------*/
-void insereFila(filaVertices fila, vertice vert);
+void insereListaFinal(listaVertices lista, vertice vert);
 
 /*------------------------------------------------------------------------------
-        Retira da fila pelo final
+        Retira da lista pelo final
 ------------------------------------------------------------------------------*/
-vertice retiraFinalFila(filaVertices fila);
+vertice retiraFinalLista(listaVertices lista);
 
 /*------------------------------------------------------------------------------
-        Retira da fila pelo inicio
+        Mostra toda a lista
 ------------------------------------------------------------------------------*/
-vertice retiraInicioFila(filaVertices fila);
+void mostraLista(listaVertices lista);
 
-void mostraFila(filaVertices fila);
-void adicionaCicloT(grafo g, filaVertices fila, filaVertices filaTrilhaT, char *nome);
-void copiaFila(filaVertices fila, filaVertices trilha);
+/*------------------------------------------------------------------------------
+        Verifica os vertices que se encontra no ciclo encontrado.
+------------------------------------------------------------------------------*/
+void verificaCicloT(grafo g, listaVertices lista, listaVertices listaTrilhaT);
+
+/*------------------------------------------------------------------------------
+       Remove a aresta v-u / u-v do grafo 
+------------------------------------------------------------------------------*/
 void removeAresta(grafo g, vertice v, vertice u);
-void freeFila(filaVertices fila);
+
+/*------------------------------------------------------------------------------
+        Libera todos os nodes da lista
+------------------------------------------------------------------------------*/
+void freeLista(listaVertices lista);
+
+/*------------------------------------------------------------------------------
+       Para cada vertice na lista do ciclo encontrado, arruma a trilha listaTrilhaT
+    para comportar o ciclo menor (listaTrilhaT ainda continua como uma trilha)
+------------------------------------------------------------------------------*/
+void atualizaTrilha(listaVertices copia, listaVertices listaTrilhaT);
+
 /*------------------------------------------------------------------------------
         Realiza uma busca em profundidade no grafo g, salvando a arvoreT
 ------------------------------------------------------------------------------*/
-void buscaProfundidade(filaVertices fila, filaVertices filaTrilhaT, grafo g, vertice vert);
+void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g, vertice vert);
 
+grafo clonaGrafo(grafo g);
+vertice copiaVertice(vertice v);
+int arestaProcessada(vertice vert, vertice v, listaVertices lista);
+//void mostraCobertura(vertice **cobertura[], unsigned int k);
 
 /*------------------------------------------------------------------------------
        tamanho maximo do buffer (que eh o tamanho maximo de cada linha do arquivo)
 ------------------------------------------------------------------------------*/
 #define buffSize 2050
 
-/*------------------------------------------------------------------------------
-       Copia do grafo g para nao perder o conteudo e formato original
-------------------------------------------------------------------------------*/
-
-grafo gCopia;
 /*------------------------------------------------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------------------------------------------------*/
 void coloca_vertice_grafo(grafo g, char *line, long unsigned int espaco, unsigned int numEspaco)
@@ -204,7 +221,9 @@ vertice cria_vertice_lista(char *nome, long unsigned int tam)
 	novo_vertice->nome = (char*)malloc(tam*sizeof(char));
 	strcpy(novo_vertice->nome, nome);
 	novo_vertice->next = NULL;
+	novo_vertice->grau = 0;
 	novo_vertice->estado = 0;
+	novo_vertice->coringa = 0;
 
 	//retorna o vertice criado
 	return novo_vertice;
@@ -373,7 +392,8 @@ grafo le_grafo(FILE *input)
 {
 	//recebe o grafo criado por cria_grafo()
 	grafo g = cria_grafo();
-	gCopia = cria_grafo();
+
+
 	char *line = (char*)malloc(buffSize*sizeof(char));
 	int ch;
 	
@@ -413,7 +433,6 @@ grafo le_grafo(FILE *input)
 			else
 			{	
 				coloca_vertice_grafo(g, line, espaco, numEspaco);
-				coloca_vertice_grafo(gCopia, line, espaco, numEspaco);
 			}
 
 			free(line);
@@ -442,7 +461,6 @@ grafo le_grafo(FILE *input)
 		else
 		{	
 			coloca_vertice_grafo(g, line, espaco, numEspaco);
-			coloca_vertice_grafo(gCopia, line, espaco, numEspaco);
 		}
 	}
 
@@ -462,26 +480,26 @@ grafo escreve_grafo(FILE *output, grafo g)
 		return g;
 	}
 
-	unsigned int v;
+	//unsigned int v;
 	vertice aux;
 
-    printf("\nGrafo com %d vertices e %d arestas\n\n", n_vertices(g), n_arestas(g));
-    for (v = 0; v < g->numV; ++v)
-    {	
-		printf("\n(vertice %s de grau %d)\n", g->array[v].head->nome, 
-		g->array[v].head->grau);
-		vertice vert = g->array[v].head->next;
-		while(vert)
-		{	
-			if(vert != NULL)
-			{
-				printf(" -> %s", vert->nome);
-				vert = vert->next;
-			}
-		}
-		printf("\nhead %s\n", g->array[v].head->nome);
-		printf("\n");
-	}
+    //printf("\nGrafo com %d vertices e %d arestas\n\n", n_vertices(g), n_arestas(g));
+    //for (v = 0; v < g->numV; ++v)
+    //{	
+	//	printf("\n(vertice %s de grau %d)\n", g->array[v].head->nome, 
+	//	g->array[v].head->grau);
+	//	vertice vert = g->array[v].head->next;
+	//	while(vert)
+	//	{	
+	//		if(vert != NULL)
+	//		{
+	//			printf(" -> %s(%d)", vert->nome, vert->grau);
+	//			vert = vert->next;
+	//		}
+	//	}
+	//	printf("\nhead %s\n", g->array[v].head->nome);
+	//	printf("\n");
+	//}
 
 	//para cada indice do array de listas de adjacencia, percorro vertice por vertice e cada par 
 	//eh colocado em um arquivo de saida no mesmo estilo do arquivo de entrada (leitura)
@@ -490,7 +508,7 @@ grafo escreve_grafo(FILE *output, grafo g)
 	//respectivamente. (saida nao possui os parenteses)
 	for(unsigned int i = 0; i < g->numV; ++i)
 	{	
-		if(g->array[v].head != NULL)
+		if(g->array[i].head != NULL)
     	{
 			aux = g->array[i].head;
 			while(aux->next != NULL)
@@ -505,45 +523,50 @@ grafo escreve_grafo(FILE *output, grafo g)
 	return g;
 }
 
-unsigned int cobertura_por_trilhas(grafo g, vertice *cobertura[])
+unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 {	
+	//para verificar se o grafo eh Euleriano antes de adicionar o vertice "novo"
+	unsigned int ehEuleriano = 0;
+    
+    //copia do grafo g para nao perder o conteudo e formato original
+
+	grafo gCopia = clonaGrafo(g);
 //--------------------1.1-------------------------------
-//Seja I(fila) o conjunto de vértices de grau ímpar de G.
+//Seja I(lista) o conjunto de vértices de grau ímpar de G.
 	vertice vert;
-	//crio uma fila vazia
-	filaVertices fila = iniciaFila();
-	if(!fila)
+	//crio uma lista vazia
+	listaVertices lista = inicialista();
+	if(!lista)
 	{
 		printf("Sem memoria disponivel!\n");
 		exit(1);
 	}
 
 	//para cada vertice do grafo, confiro qual tem grau impar
-	//se for impar, adiciono na fila
+	//se for impar, adiciono na lista
 	for(unsigned int i = 0; i < gCopia->numV; ++i)
 	{	
 		if(gCopia->array[i].head->grau % 2 != 0){
-			//crio uma copia do vertice impar para ser adicionado na fila
-			vert = cria_vertice_lista(gCopia->array[i].head->nome, strlen(gCopia->array[i].head->nome));
-			vert->grau = gCopia->array[i].head->grau;
-			insereFila(fila, vert);
+			//crio uma copia do vertice impar para ser adicionado na lista
+			vert = copiaVertice(gCopia->array[i].head);
+			insereListaFinal(lista, vert);
 		}
 	}
 
 //---------------------------------------------------------------------
 //--------------------1.2-------------------------------
-	//Se I(fila) não é vazio, acrescente um novo vértice v(novo) a G
+	//Se I(lista) não é vazio, acrescente um novo vértice v(novo) a G
 	//e acrescente arestas de forma que v seja vizinho de todos os vértices de I. 
 	//Observe que agora o grafo G é euleriano.
-	if(fila->head != NULL)
+	if(lista->head != NULL)
 	{	
 		
-		mostraFila(fila);
+		//mostraLista(lista);
 
 		char novo[5] = "novo";
 		vert = cria_vertice_lista(novo, 5);
 		vert->estado = 0;
-		vertice aux = fila->head;
+		vertice aux = lista->head;
 		while(aux != NULL)
 		{	
 			//crio uma nova string com os nomes dos vertices concatenados separados por espaco em branco
@@ -558,14 +581,21 @@ unsigned int cobertura_por_trilhas(grafo g, vertice *cobertura[])
 		}
 		free(vert);
 
-	//aloca o vetor cobertura
-	//*cobertura = malloc(((fila->tam)/2)*sizeof(vertice));
+		gCopia->array[n_vertices(gCopia) - 1].head->coringa = 1;
+
+		ehEuleriano = (lista->tam)/2;
+		printf("Grafo Nao Euleriano\n");
 	}
 	else
 	{
 		printf("Grafo Euleriano\n");
-		//return 1;
+		ehEuleriano = 1;
 	}
+	freeLista(lista);
+
+	//printf("***************************\n");
+	//gCopia = escreve_grafo(stdout, gCopia);
+	//printf("***************************\n");
 //---------------------------------------------------------------------
 //--------------------1.3-------------------------------
     //Encontre uma trilha euleriana fechada T em G.
@@ -574,78 +604,122 @@ unsigned int cobertura_por_trilhas(grafo g, vertice *cobertura[])
 
     //--------------------2.2-------------------------------
     //Enquanto existir em V(T) um vértice u de grau positivo em G,
-    vertice w, x, u, aux;
+    vertice w, x, u;
 
-	filaVertices filaTrilhaT;
-	filaVertices filaBusca;
+	listaVertices listaTrilhaT;
+	listaVertices listaBusca;
 
-	filaTrilhaT = iniciaFila();
-	filaBusca = iniciaFila();
-	buscaProfundidade(filaBusca, filaTrilhaT, gCopia, gCopia->array[0].head);
-	u = filaTrilhaT->head;
+	listaTrilhaT = inicialista();
+	listaBusca = inicialista();
+
+	if(ehEuleriano != 1)
+	{
+		u = gCopia->array[n_vertices(gCopia) - 1].head;
+	}
+	else
+	{
+		u = gCopia->array[0].head;
+	}
+	gCopia->raizArvore = u;
+	buscaProfundidade(listaBusca, listaTrilhaT, gCopia, u);
+	freeLista(listaBusca);
+
+	u = listaTrilhaT->head;
 	while(u != NULL)
 	{	
-		filaBusca = iniciaFila();
+		listaBusca = inicialista();
 		gCopia->achouCiclo = 0;
-		w = filaTrilhaT->head;
+		w = listaTrilhaT->head;
 		//atualizando grau na trilha
 		while(w != NULL)
 		{	
-			unsigned int i = 0;
-			x = gCopia->array[i].head;
-			while(i < n_vertices(gCopia))
+			for(unsigned int i = 0; i < n_vertices(gCopia); ++i)
 			{
-				if((strcmp(w->nome, x->nome) == 0))
+				if((strcmp(w->nome, gCopia->array[i].head->nome) == 0))
 				{
-					w->grau = x->grau;
+					w->grau = gCopia->array[i].head->grau;
+					w->coringa = gCopia->array[i].head->coringa;
 					break;
 				}
-				++i;
-				x = gCopia->array[i].head;
 			}
 			w = w->next;
-		} 
+		} 	
+		free(w);		
+	
 		if(u->grau > 0)
 		{
-			//printf("u eh: %s com grau %d\n", u->nome, u->grau);
 			//zero todos os estados de todos os vertices
 			int achou = 0;
 			for(unsigned int i = 0; i < n_vertices(gCopia); ++i)
 			{
+				if(!achou && (strcmp(gCopia->array[i].head->nome, u->nome) == 0))
+				{
+					x = gCopia->array[i].head;
+					achou = 1;
+				}
 				w = gCopia->array[i].head;
 				while(w != NULL)
 				{
-					if(!achou && (strcmp(w->nome, u->nome) == 0))
-					{
-						x = w;
-						achou = 1;
-					}
 					w->estado = 0;
 					w = w->next;
 				}
 			}
+			free(w);
 			//encontre um ciclo C em G contendo o vértice x,
-			buscaProfundidade(filaBusca, filaTrilhaT, gCopia, x);
-			//escreve_grafo(stdout, gCopia);
+			gCopia->raizArvore = x;
+			buscaProfundidade(listaBusca, listaTrilhaT, gCopia, x);
 		}	
 		else
 		{
-			//break;
 			u = u->next;
 		}
-	
+		freeLista(listaBusca);
+	}
+	free(u);
 
-		//freeFila(filaTrilhaT);
-		//printf("u eh: %s com grau %d\n", u->nome, u->grau);
-		//escreve_grafo(stdout, gCopia);
-		//escreve_grafo(stdout, gCopia);
+	mostraLista(listaTrilhaT);
+	destroi_grafo(gCopia);
+	
+	unsigned int i, j;
+
+	*cobertura = malloc(ehEuleriano*sizeof(vertice*));
+	for(i = 0; i < ehEuleriano; ++i)
+	{
+		(*cobertura)[i] = malloc((listaTrilhaT->tam+1)*sizeof(struct _vertice*));
 	}
 
-	destroi_grafo(gCopia);
-	return ((fila->tam)/2);
+	if(ehEuleriano != 1)
+	{
+		vert = listaTrilhaT->head->next;
+	}
+	else
+	{
+		vert = listaTrilhaT->head;
+	}
+	for(i = 0; i < ehEuleriano; ++i)
+	{	
+		for(j = 0; (vert->coringa != 1) && (vert->next != NULL); ++j)
+		{	
+			(*cobertura)[i][j] = copiaVertice(vert);
+			vert = vert->next;
+		}
+		if(ehEuleriano != 1)
+		{
+			vert = vert->next;
+			(*cobertura)[i][j] = NULL;
+		}
+		else
+		{
+			(*cobertura)[i][j] = copiaVertice(vert);
+			(*cobertura)[i][j+1] = NULL;
+		}
+	}
+	freeLista(listaTrilhaT);
+
+	return (ehEuleriano);
 }	
 
-void buscaProfundidade(filaVertices fila, filaVertices filaTrilhaT, grafo g, vertice vert)
+void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g, vertice vert)
 {	
 	vertice u, aux1, aux2;
 
@@ -668,25 +742,37 @@ void buscaProfundidade(filaVertices fila, filaVertices filaTrilhaT, grafo g, ver
 	
 	while(v != NULL)
 	{	
-		if(v->estado == 1 && (strcmp(v->nome, vert->pai->nome)))
-		{	
-			aux1 = cria_vertice_lista(vert->nome, strlen(vert->nome)+1);			
-			aux2 = cria_vertice_lista(v->nome, strlen(v->nome)+1);
-			insereFila(fila, aux1);
-			insereFila(fila, aux2);
-
-			//printf("1passei de %s -> %s\n", vert->nome, v->nome);
-			printf("ACHEI CICLO!!\n");
-			g->achouCiclo = 1;
-			adicionaCicloT(g, fila, filaTrilhaT, aux2->nome);
-		}
-		else if(v->estado == 0)
+		//printf("2passei de %s -> %s\n", vert->nome, v->nome);
+		if(v->estado == 1 && !arestaProcessada(vert, v, lista) && strcmp(g->raizArvore->nome, v->nome) != 0)
 		{
+			//printf("mudando estado\n");
+			//mostraLista(lista);
+			v->estado = 0;
+		}
+		//printf("2passei de %s -> %s\n", vert->nome, v->nome);
+		if(v->estado == 1 && (strcmp(v->nome, vert->pai->nome)) && !arestaProcessada(vert, v, lista))
+		{	
+			if(strcmp(g->raizArvore->nome, v->nome) == 0)
+			{
+				aux1 = copiaVertice(vert);		
+				aux2 = copiaVertice(v);
+				insereListaFinal(lista, aux1);
+				insereListaFinal(lista, aux2);
+
+				//printf("1passei de %s -> %s\n", vert->nome, v->nome);
+				//printf("ACHEI CICLO!!\n");
+				g->achouCiclo = 1;
+				verificaCicloT(g, lista, listaTrilhaT);
+			}
+			
+		}
+		else if((v->estado == 0))
+		{	
 			v->pai = vert;
-			aux1 = cria_vertice_lista(vert->nome, strlen(vert->nome)+1);			
-			aux2 = cria_vertice_lista(v->nome, strlen(v->nome)+1);	
-			insereFila(fila, aux1);
-			insereFila(fila, aux2);
+			aux1 = copiaVertice(vert);
+			aux2 = copiaVertice(v);
+			insereListaFinal(lista, aux1);
+			insereListaFinal(lista, aux2);
 
 			for (unsigned int i = 0; i < n_vertices(g); ++i)
     		{
@@ -709,7 +795,7 @@ void buscaProfundidade(filaVertices fila, filaVertices filaTrilhaT, grafo g, ver
 					break;
 				}
 			}
-			buscaProfundidade(fila, filaTrilhaT, g, u);
+			buscaProfundidade(lista, listaTrilhaT, g, u);
 		}
 		if(g->achouCiclo == 0)
 		{
@@ -736,10 +822,29 @@ void buscaProfundidade(filaVertices fila, filaVertices filaTrilhaT, grafo g, ver
 
 }
 
-filaVertices iniciaFila(void)
+int arestaProcessada(vertice vert, vertice v, listaVertices lista)
+{	
+	vertice aux = lista->head;
+	for(unsigned int i = lista->tam; i > 0; i-=2)
+	{	
+		if(strcmp(aux->nome, vert->nome) == 0 && strcmp(aux->next->nome, v->nome) == 0)
+		{
+			return 1;
+		}
+		else if (strcmp(aux->nome, v->nome) == 0 && strcmp(aux->next->nome, vert->nome) == 0)
+		{
+			return 1;
+		}
+		aux = aux->next->next;
+	}
+	return 0;
+}
+
+
+listaVertices inicialista(void)
 {
 	//aloco memoria para a lista 
-	filaVertices fv = (filaVertices)malloc(sizeof(struct filaVertices));
+	listaVertices fv = (listaVertices)malloc(sizeof(struct listaVertices));
 
 	fv->head = NULL;
 	fv->tam = 0;
@@ -747,16 +852,16 @@ filaVertices iniciaFila(void)
 	return fv;
 }
 
-void insereFila(filaVertices fila, vertice vert)
+void insereListaFinal(listaVertices lista, vertice vert)
 {
 
-	if(fila->head == NULL)
+	if(lista->head == NULL)
 	{
-		fila->head = vert;
+		lista->head = vert;
 	}
 	else
 	{
-		vertice aux = fila->head;
+		vertice aux = lista->head;
 
 		while(aux->next != NULL)
 		{
@@ -765,13 +870,14 @@ void insereFila(filaVertices fila, vertice vert)
 
 		aux->next = vert;
 	}
-	fila->tam++;
+	lista->tam++;
 }
 
-vertice retiraFinalFila(filaVertices fila)
+vertice retiraFinalLista(listaVertices lista)
 {	
-	vertice aux = fila->head->next;
-	vertice temp = fila->head;
+	vertice aux = lista->head->next;
+	vertice temp = lista->head;
+	vertice copia;
 	if(aux != NULL)
 	{
 		while(aux->next != NULL)
@@ -781,32 +887,26 @@ vertice retiraFinalFila(filaVertices fila)
 		}
 
 		temp->next = NULL;
-		fila->tam--;
-		vertice copia = cria_vertice_lista(aux->nome, strlen(aux->nome)+1);
+		lista->tam--;
+		copia = copiaVertice(aux);
+		free(aux->nome);
 		free(aux);
 		return copia;
 	}
-	return temp;
-}
-vertice retiraInicioFila(filaVertices fila)
-{	
-	vertice aux = fila->head;
-	if(aux != NULL)
-	{
-		fila->head = aux->next;
-		vertice copia = cria_vertice_lista(aux->nome, strlen(aux->nome)+1);
-		free(aux);
-		return copia;
-	}
-	return NULL;
+	lista->tam--;
+	lista->head = NULL;
+	copia = copiaVertice(temp);
+	free(temp->nome);
+	free(temp);
+	return copia;
 }
 
-void mostraFila(filaVertices fila)
+void mostraLista(listaVertices lista)
 {	
-	if(fila->head != NULL)
+	if(lista->head != NULL)
 	{
-		printf("---- Fila ----\n");
-		vertice aux = fila->head;
+		printf("---- lista ----\n");
+		vertice aux = lista->head;
 		while(aux->next != NULL)
 		{
 			printf("%s --> ", aux->nome);
@@ -816,83 +916,95 @@ void mostraFila(filaVertices fila)
 	}	
 }
 
-void freeFila(filaVertices fila)
+void freeLista(listaVertices lista)
 {
-	if(fila->head == NULL)
+	if(lista->head == NULL)
 	{
-			return;
+		return;
 	}
 
-	vertice aux = fila->head;
-	fila->head = fila->head->next;	
-	while(fila->head != NULL)
+	vertice aux = lista->head;
+	lista->head = lista->head->next;	
+	while(lista->head != NULL)
 	{	
-		free(fila->head);
-		fila->head = aux;
-		aux = aux->next;
+		free(aux->nome);
+		free(aux);
+		aux = lista->head;
+		lista->head = lista->head->next;
 	}	
-	free(fila->head);
-
-	
+	free(aux->nome);
+	free(aux);	
 }
 
 
 
-void adicionaCicloT(grafo g, filaVertices fila, filaVertices filaTrilhaT, char *nome)
+void verificaCicloT(grafo g, listaVertices lista, listaVertices listaTrilhaT)
 {	
 	vertice v, u;
 
-	filaVertices trilha = iniciaFila();
-	
-	insereFila(trilha, retiraFinalFila(fila));
+	listaVertices copia = inicialista();
 
-	vertice aux = retiraFinalFila(fila);
-	while(aux != NULL)
-	{
-		if(strcmp(aux->nome, nome) == 0)
-		{
-			break;
-		}
-		insereFila(trilha, aux);
-		aux = retiraFinalFila(fila); 
-	}
-	insereFila(trilha, aux);
-
-	mostraFila(trilha);
 
 	//removendo arestas do ciclo
-	for(unsigned int i = trilha->tam; i > 0; i-=2)
+	for(unsigned int i = lista->tam; i > 0; i-=2)
 	{	
-		v = retiraFinalFila(trilha);
-		insereFila(filaTrilhaT, v);
+		v = retiraFinalLista(lista);
+		insereListaFinal(copia, v);
 
-		u = retiraFinalFila(trilha);
+		u = retiraFinalLista(lista);
 		if(i == 2)
 		{
-			insereFila(filaTrilhaT, u);			
+			insereListaFinal(copia, u);
 		}
+
 		removeAresta(g, v, u);
 	}
-
-			printf("##### trilha T #####\n");
-			mostraFila(filaTrilhaT);
+	atualizaTrilha(copia, listaTrilhaT);
+	freeLista(copia);
 }
 
 
-unsigned int n_vertices(grafo g)
+void atualizaTrilha(listaVertices copia, listaVertices listaTrilhaT)
 {
-	return g->numV;
-}
-
-unsigned int n_arestas(grafo g)
-{
-	return g->numA;
+	vertice v, aux, temp;
+	if(listaTrilhaT->head == NULL)
+	{
+		for(unsigned int i = copia->tam; i > 0; --i)
+		{
+			v = retiraFinalLista(copia);
+			insereListaFinal(listaTrilhaT, v);	
+		}
+		freeLista(copia);
+	}
+	else
+	{
+		aux = listaTrilhaT->head;
+		v = retiraFinalLista(copia);
+		while(aux->next != NULL)
+		{	
+			if(strcmp(aux->nome, v->nome) == 0)
+			{
+				break;
+			}
+			aux = aux->next;
+		}
+		for(unsigned int i = copia->tam; i > 0; --i)
+		{
+			v = retiraFinalLista(copia);
+			temp = aux->next;
+			aux->next = v;
+			v->next = temp;
+			listaTrilhaT->tam++;
+			aux = aux->next;
+		}
+		freeLista(copia);
+	}
 }
 
 void removeAresta(grafo g, vertice v, vertice u)
 {	
 	vertice vert, aux;
-
+	int removeu = 0;
 	for(unsigned i = 0; i < n_vertices(g); ++i)
 	{	
 		vert = g->array[i].head;
@@ -910,13 +1022,19 @@ void removeAresta(grafo g, vertice v, vertice u)
 						free(aux);
 
 						g->array[i].head->grau--;
+						removeu = 1;
 						break;
 					}
 					vert = vert->next;
 				}
 			}
 		}
+		if(removeu)
+		{
+			break;
+		}
 	}
+	removeu = 0;
 	for(unsigned i = 0; i < n_vertices(g); ++i)
 	{	
 		vert = g->array[i].head;
@@ -934,13 +1052,82 @@ void removeAresta(grafo g, vertice v, vertice u)
 						free(aux);
 
 						g->array[i].head->grau--;
+						removeu = 1;
 						break;
 					}
 					vert = vert->next;
 				}
 			}
 		}
+		if(removeu)
+		{
+			break;
+		}
 	}
 	g->numA--;
 	return;
+}
+
+grafo clonaGrafo(grafo g)
+{
+	grafo gClone = cria_grafo();
+
+	gClone->numV = n_vertices(g);
+	gClone->numA = n_arestas(g);
+
+	vertice u, clone;
+	for (unsigned int i = 0; i < n_vertices(g); ++i)
+    {
+		u = g->array[i].head;
+		gClone->array[i].head = copiaVertice(g->array[i].head);
+		
+		clone = gClone->array[i].head;
+		while(u != NULL)
+		{
+			clone->next = copiaVertice(u->next);
+			u = u->next;
+			clone = clone->next;
+		}
+	}
+	return gClone;
+}
+
+vertice copiaVertice(vertice v)
+{
+	if(v != NULL)
+	{
+		vertice copia = cria_vertice_lista(v->nome, strlen(v->nome)+1);
+		copia->estado = v->estado;
+		copia->pre = v->pre;
+		copia->pos = v->pos;
+		copia->grau = v->grau;
+		strcpy(copia->nome, v->nome);
+		copia->coringa = v->coringa;
+		
+		return copia;
+	}
+	return NULL;
+}
+
+void mostraCobertura(vertice *cobertura[], unsigned int k)
+{	
+	printf("\n------ Vetor Cobertura ------\n");
+	for(unsigned int i = 0; i < k; ++i)
+	{
+		for(unsigned int j = 0; cobertura[i][j] != NULL; ++j)
+		{	
+			printf("%s --> ", cobertura[i][j]->nome);
+		}
+		printf("NULL\n");
+	}
+}
+
+unsigned int n_vertices(grafo g)
+{
+	return g->numV;
+}
+
+unsigned int n_arestas(grafo g)
+{
+	return g->numA;
 }
