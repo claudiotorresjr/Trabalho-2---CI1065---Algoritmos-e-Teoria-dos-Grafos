@@ -1,0 +1,9 @@
+# 2 trilhas
+# 4 vertices
+# 6 arestas
+a b
+b c
+c d
+d a
+a c
+b d

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+for f in tests/*.in; do
+  if diff \
+    <(awk '/^[^#]/ {
+          if (!$2) { print $1 }
+          else if (($1 "") < ($2 "")) { print $1, $2 }
+          else { print $2, $1 }
+        } /^#/ { print }' $f |
+      sort -u
+    ) \
+    <(grep "^[^#]" $f |
+      ./src/teste |
+      awk '/^[^#]/ {
+          if (!$2) { print $1 }
+          else if (($1 "") < ($2 "")) { print $1, $2 }
+          else { print $2, $1 }
+        } /^#/ { print }' |
+        sort -u
+    ); then
+    echo PASS $f
+  else
+    echo FAIL $f
+    exit 1
+  fi
+done

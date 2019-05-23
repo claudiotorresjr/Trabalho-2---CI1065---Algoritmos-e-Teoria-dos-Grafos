@@ -1,0 +1,15 @@
+# 1 trilhas
+# 6 vertices
+# 9 arestas
+a b
+b c
+c d
+d a
+
+d e
+d f
+
+e f
+
+f b
+f c

@@ -1,0 +1,15 @@
+image: debian:9
+
+stages:
+  - compile
+
+run_test:
+  stage: compile
+  before_script:
+    - apt-get -y -qq update && apt-get install -y -qq g++ valgrind make tar gzip
+  script:
+    - make test
+  tags:
+    - build
+    - debian
+    - regular

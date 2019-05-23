@@ -1,0 +1,21 @@
+# 11 vertices
+# 18 arestas
+# 5 trilhas
+a b
+b c
+c d
+d e
+e f
+f g
+g h
+h a
+a e
+h d
+f c
+g b
+a c
+c g
+g a
+k o
+o l
+l k
