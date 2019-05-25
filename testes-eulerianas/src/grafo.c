@@ -33,6 +33,9 @@ typedef struct AdjList *AdjList;
         Struct para o grafo
     --> unsigned int numV; numero de vertices
 	--> unsigned int numA; numero de arestas
+	--> unsigned int achouCiclo; flag que avisa se encontrou um ciclo
+	--> unsigned int componentes; numero de componentes do grafo
+	--> struct vertice *raizArvore; ponteiro para vertice que se iniciou a busca em profundidade 
 	--> struct AdjList *array; um array de listas de adjacencias (cada indice uma lista)
 ------------------------------------------------------------------------------*/
 struct _grafo
@@ -51,7 +54,6 @@ struct _grafo
        +0 nao foi visitado, (branco)
        +1 foi visitado, (vermelho)
        +2 faz parte de um ciclo, (verde)
-       +-1 vertice v adicionado a G 
     --> unsigned int grau; grau do vertice
 	--> char *nome; nome do vertice
 	--> int coringa: se 1, indica que o vertice nao faz parte do arquivo do grafo
@@ -151,8 +153,20 @@ void atualizaTrilha(listaVertices copia, listaVertices listaTrilhaT);
 ------------------------------------------------------------------------------*/
 void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g, vertice vert);
 
+/*------------------------------------------------------------------------------
+        Cria um clone do grafo g
+------------------------------------------------------------------------------*/
 grafo clonaGrafo(grafo g);
+
+/*------------------------------------------------------------------------------
+        Copia e retorna um vertice com todos os atributos de um vertice v
+------------------------------------------------------------------------------*/
 vertice copiaVertice(vertice v);
+
+/*------------------------------------------------------------------------------
+       Verifica se a aresta vert-v ou v-vert ja foi percorrida na busca 
+       (se esta na lista de arestas percorridas)
+------------------------------------------------------------------------------*/
 int arestaProcessada(vertice vert, vertice v, listaVertices lista);
 
 /*------------------------------------------------------------------------------
@@ -418,8 +432,22 @@ grafo le_grafo(FILE *input)
 		//ao encontrar um \n, chegamos ao final de uma linha 
 		if(ch == '\n')
 		{	
-			//o buffer da linha recebe \0 no final para apagar o \n e indicar final de String
-			line[j - 1] = '\0';
+			if(numEspaco == 2)
+			{
+				if(line[j - 2] == ' ')
+				{	
+					unsigned int x;
+					numEspaco = 1;
+					line[j - 2] = '\0';
+					for(x = j - 1; line[x] != ' '; --x){}
+					espaco = x;
+				}
+			}
+			else
+			{
+				//o buffer da linha recebe \0 no final para apagar o \n e indicar final de String
+				line[j - 1] = '\0';
+			}
 			//se houver mais que 1 espaco, a linha eh invalida pois possui mais de duas Strings
 			if(numEspaco > 1)
 			{
@@ -444,10 +472,24 @@ grafo le_grafo(FILE *input)
 		}
 
 	}
-	//por estar sendo usado o fgetc(), se nao houver um \n no final do arquivo, a ultima linha nao eh lida.
+	//por estar sendo usado o fgetc() e o criterio de parada ser um \n, se nao houver um \n no final do arquivo, a ultima linha nao eh lida.
 	//por isso essa ultima linha, se existir (nao for vazia), deve ser tratada fora do while principal. 
-	//eh colocado \0 no final para indicar final de String
-	line[j] = '\0';
+	if(numEspaco == 2)
+	{
+		if(line[j - 2] == ' ')
+		{	
+			unsigned int x;
+			numEspaco = 1;
+			line[j - 2] = '\0';
+			for(x = j - 1; line[x] != ' '; --x){}
+			espaco = x;
+		}
+	}
+	else
+	{
+		//o buffer da linha recebe \0 no final para apagar o \n e indicar final de String
+		line[j] = '\0';
+	}
 	//se o buffer nao estiver vazio, eh feito todo o tratamento do --if(ch == '\n')-- feito anteriormente
 	if(line[0] != '\0')
 	{
@@ -565,8 +607,11 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 		
 		//mostraLista(lista);
 
-		char novo[5] = "novo";
-		vert = cria_vertice_lista(novo, 5);
+		//novo eh o novo vertice a ser inserido na copia do grafo. Para nao precisar modificar o codigo de insercao,
+		//foi pensando em um vertice que possua espaco em branco em seu nome, pois de acordo com a especificacao, nunca tera 
+		//vertice com espaco em branco no nome no grafo g. Portanto nao tera perigo de tentar adicionar um vertice ja existente
+		char novo[12] = "/Novo ovoN/";
+		vert = cria_vertice_lista(novo, 12);
 		vert->estado = 0;
 		vertice aux = lista->head;
 		while(aux != NULL)
@@ -583,9 +628,12 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 		}
 		free(vert);
 
+		//seto para este vertice o coringa como 1 para identificarmos dentre todos os vertices qual nao pertence ao grafo original
 		gCopia->array[n_vertices(gCopia) - 1].head->coringa = 1;
 
+		//por ter um numero impar de vertices > 0 o numero de trilhas (ehEuleriano) recebe o numero de vertice impar dividido por 2
 		ehEuleriano = (lista->tam)/2;
+		//seta a flag para mostrar que foi inserido um vertice extra
 		ehImpar = 1;
 		//printf("Grafo Nao Euleriano\n");
 	}
@@ -596,9 +644,6 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 	}
 	freeLista(lista);
 
-	//printf("***************************\n");
-	//gCopia = escreve_grafo(stdout, gCopia);
-	//printf("***************************\n");
 //---------------------------------------------------------------------
 //--------------------1.3-------------------------------
     //Encontre uma trilha euleriana fechada T em G.
@@ -609,37 +654,47 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
     //Enquanto existir em V(T) um vértice u de grau positivo em G,
     vertice w, x, u;
 
+    //lista que ira salvar a trilha euleriana do grafo em questao
 	listaVertices listaTrilhaT;
+	//lista que ira salvar todas as arestas que estao sendo percorridas em cada busca
 	listaVertices listaBusca;
 
 	listaTrilhaT = inicialista();
 	listaBusca = inicialista();
 
-	if(ehEuleriano != 1)
+	//se ha vertices de grau impar, pego o vertice inserido de coringa == 1 para se iniciar a busca (ele eh o ultimo da lista de adjacencia dos vertices)
+	if(ehImpar == 1)
 	{
 		u = gCopia->array[n_vertices(gCopia) - 1].head;
 	}
+	// se nao for, pego o primeiro vertice da lista para iniciar a busca
 	else
 	{
 		u = gCopia->array[0].head;
 	}
+
+	//seto no grafo qual vertice esta iniciando a busca
 	gCopia->raizArvore = u;
+	//realizo a busca em profundidade a partir deste vertice
 	buscaProfundidade(listaBusca, listaTrilhaT, gCopia, u);
 	freeLista(listaBusca);
 
 	unsigned int i;
 
+	//apos ter feito a primeira busca, ja tem elemento na lista da futura trilha euleriana. pego o primeiro vertice dela para iniciar outra busca
 	u = listaTrilhaT->head;
 	while(u != NULL)
 	{	
 		listaBusca = inicialista();
+		//seto como falsa a flag de que encontrou um ciclo
 		gCopia->achouCiclo = 0;
+
 		w = listaTrilhaT->head;
 		//atualizando grau na trilha
 		while(w != NULL)
 		{	
 			for(i = 0; i < n_vertices(gCopia); ++i)
-			{
+			{	//para cada vertice da lista da trilha euleriana atualizo os graus desses vertices e os coringas
 				if((strcmp(w->nome, gCopia->array[i].head->nome) == 0))
 				{
 					w->grau = gCopia->array[i].head->grau;
@@ -650,19 +705,22 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 			w = w->next;
 		} 	
 		free(w);		
-	
+		
+		//u sera o vertice a iniciar uma busca somente se tiver grau > 0
 		if(u->grau > 0)
 		{
-			//zero todos os estados de todos os vertices
 			int achou = 0;
 			for(i = 0; i < n_vertices(gCopia); ++i)
-			{
+			{	
+				//devemos mandar para a busca o vertice que se encontra no grafo para que seja percorrido seus vizinhos.
+				//se mandasse o u, iriamos percorrer na busca os vertices da lista de trilha.
 				if(!achou && (strcmp(gCopia->array[i].head->nome, u->nome) == 0))
 				{
 					x = gCopia->array[i].head;
 					achou = 1;
 				}
 				w = gCopia->array[i].head;
+				//zero todos os estados de todos os vertices
 				while(w != NULL)
 				{
 					w->estado = 0;
@@ -670,34 +728,42 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 				}
 			}
 			free(w);
-			//encontre um ciclo C em G contendo o vértice x,
+
+			//para a proxima busca atualizo no grafo qual vertice esta iniciando a busca
 			gCopia->raizArvore = x;
 			buscaProfundidade(listaBusca, listaTrilhaT, gCopia, x);
 		}	
 		else
-		{
+		{	
 			u = u->next;
+			//ao chegar ao final da lista de trilhas ja formada pela busca em profundidade, deve ser verificado se nao ficou nenhum vertice
+			//com grau > 0 no grafo. Pois se ficou, temos um grafo desconexo e esse vertice de grau > 0 eh de outra componente
 			if(u == NULL)
 			{
 				for(i = 0; i < n_vertices(gCopia); ++i)
 				{
+					//para cada vertice verifico o grau ate encontrar um > 0
 					if(gCopia->array[i].head->grau > 0)
 					{	
-						//printf("AINDA TEM\n");
 						//ainda tem vertice no grafo que nao verificado
 						break;
 					}
 				}
+				//se o i do for anterior for menor q o numero de vertices do grafo gCopia isso indica que ha outro componente no grafo
 				if(i < n_vertices(gCopia))
 				{	
+					//se a primeira trilha encontrada de um componente for euleriana ou ja encontrou um outro componente,
+					//inserimos um coringa na trilha para mostrar a divisao dessa nova componente
 					if(ehImpar != 1 || gCopia->componentes > 0)
 					{
-						char componente[11] = "componente";	
+						char componente[12] = "compo nente";	
 						vertice aux = cria_vertice_lista(componente, 10);
 						aux->coringa = 1;
 						insereListaFinal(listaTrilhaT, aux);
 					}	
+					//atualizamos no grafo o numero total de componentes
 					gCopia->componentes++;
+					//o primeiro vertice encontrado do novo componente eh salvo na lista da trilha que eh usado para a busca em profundidade
 					insereListaFinal(listaTrilhaT, copiaVertice(gCopia->array[i].head));
 					u = listaTrilhaT->head;
 				}
@@ -707,9 +773,10 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 	}
 	free(u);
 
+	//se tiver mais de um componente coloco o coringa no final da trilha para uma melhor separacao dos vertices desejados no final
 	if(gCopia->componentes > 0)
 	{
-		char componente[11] = "componente";	
+		char componente[12] = "compo nente";	
 		vertice aux = cria_vertice_lista(componente, 10);
 		aux->coringa = 1;
 		insereListaFinal(listaTrilhaT, aux);
@@ -718,34 +785,44 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 	
 	unsigned int j;
 
+	//alocacao do vertice cobertura
 	*cobertura = malloc((ehEuleriano + gCopia->componentes)*sizeof(vertice*));
 	for(i = 0; i < (ehEuleriano + gCopia->componentes); ++i)
 	{
 		(*cobertura)[i] = malloc((listaTrilhaT->tam+1)*sizeof(struct _vertice*));
 	}
 	
+	//se foi inserido um vertice novo por ter vertices de grau impar, comeco a montar a cobertura pelo segundo vertice da trilha (listaTrilhaT->head->next)
+	//pois o primeiro eh o vertice coringa que nao pode estar na cobertura
 	if(ehImpar == 1)
 	{
 		vert = listaTrilhaT->head->next;
 	}
+	//se nao for, inicio com o primeiro vertice da lista
 	else
 	{
 		vert = listaTrilhaT->head;
 	}
+
 	//pego todas as trilhas entre o vertice novo
 	for(i = 0; i < ehEuleriano + gCopia->componentes; ++i)
 	{	
+		//ate encontrar o vertice coringa e enquanto nao tiver no final da lista, coloco o vertice na cobertura
 		for(j = 0; (vert->coringa != 1) && (vert->next != NULL); ++j)
 		{	
 			(*cobertura)[i][j] = copiaVertice(vert);
 			vert = vert->next;
 		}
-		if(ehImpar == 1)
+		//ao preencher toda uma linha de vertices, se encontramos o vertice coringa, o pulamos (vert = vert->next) para que na proxima iteracao
+		//comece a adicionar por um vertice diferente do coringa. 
+		//atribuo NULL ao fim de cada linha da coertura
+		if(ehImpar == 1 || strcmp("compo nente", vert->nome) == 0)
 		{	
 			vert = vert->next;
 			(*cobertura)[i][j] = NULL;
 		}
-		else
+		else if(ehImpar != 1)
+			//se nao tiver coringa, coloco o ultimo vertice na cobertura e apos ele coloco NULL
 		{
 			(*cobertura)[i][j] = copiaVertice(vert);
 			(*cobertura)[i][j+1] = NULL;
@@ -753,9 +830,12 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 	}
 
 	freeLista(listaTrilhaT);	
+
+	//salvo o numero de componentes antes de destruir o grafo gCopia
+	unsigned int comp = gCopia->componentes;
 	destroi_grafo(gCopia);
 
-	return (ehEuleriano + gCopia->componentes);
+	return (ehEuleriano + comp);
 }	
 
 
@@ -763,8 +843,10 @@ void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g,
 {	
 	vertice u, aux1, aux2;
 
+	//seta o estado do vertice a iniciar uma busca em profundidade com 1 (visitado)
 	vert->estado = 1;
 
+	//para todos os vertices de mesmo nome que se encontram nas listas de adjacencia dos outros vertices, seto o estado como 1 tambem 
 	for (unsigned int i = 0; i < n_vertices(g); ++i)
     {
 		u = g->array[i].head;
@@ -778,20 +860,26 @@ void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g,
 		}
 	}
 
+	//pego o primeiro vizinho de vert
 	vertice v = vert->next;
 	
+	//enquanto ele possui vizinhos...
 	while(v != NULL)
-	{	
+	{		
 		//printf("2passei de %s -> %s\n", vert->nome, v->nome);
+		//se o vertice que quero visitar ja foi visitado mas a aresta ainda nao foi percorrida e se este vertice nao eh aquele que iniciei a busca
+		//seto teu estado como 0 (nao visitado) para poder visita-lo
 		if(v->estado == 1 && !arestaProcessada(vert, v, lista) && strcmp(g->raizArvore->nome, v->nome) != 0)
 		{
 			//printf("mudando estado\n");
 			//mostraLista(lista);
 			v->estado = 0;
 		}
-		//printf("2passei de %s -> %s\n", vert->nome, v->nome);
+		//se o vertice que quero visitar ja foi visitado mas a aresta ainda nao foi percorrida... 
 		if(v->estado == 1 && (strcmp(v->nome, vert->pai->nome)) && !arestaProcessada(vert, v, lista))
 		{	
+			//verifico se este vertice nao eh aquele que iniciei a busca. Se for, encontramos um ciclo
+			//seto como 1 (verdadeiro) a flag de achou ciclo
 			if(strcmp(g->raizArvore->nome, v->nome) == 0)
 			{
 				aux1 = copiaVertice(vert);		
@@ -806,6 +894,7 @@ void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g,
 			}
 			
 		}
+		//se o vertice que quero visitar nao foi visitado, o visito e insiro esta aresta na lista de arestas percorridas
 		else if((v->estado == 0))
 		{	
 			v->pai = vert;
@@ -814,6 +903,7 @@ void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g,
 			insereListaFinal(lista, aux1);
 			insereListaFinal(lista, aux2);
 
+			//atualizo para todos os vertices com o mesmo nome de u que teu pai eh o v
 			for (unsigned int i = 0; i < n_vertices(g); ++i)
     		{
 				u = g->array[i].head;
@@ -827,6 +917,8 @@ void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g,
 				}
 			}
 			//printf("2passei de %s -> %s\n", vert->nome, v->nome);
+			//devo iniciar uma nova busca a partir do vertice vizinho de vert. Para isso procuro a lista de adjacencia deste vertice
+			//e mando a cabeca da lista como o vertice da busca
 			for(unsigned int i = 0; i < n_vertices(g); ++i)
 			{	
 				if((strcmp(g->array[i].head->nome, v->nome) == 0))
@@ -837,16 +929,20 @@ void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g,
 			}
 			buscaProfundidade(lista, listaTrilhaT, g, u);
 		}
+		//se ainda nao encontrou um ciclo, avanco para um proximo vertice
 		if(g->achouCiclo == 0)
 		{
 				v = v->next;
 		}
+		//se nao, dou return ate sair de todas as chamadas recursivas e termino a funcao de busca
 		else
 		{	
 			return;
 		}
 	}
+	//se o vertice nao possui mais vizinhos para visitar, setamos como 2
 	vert->estado = 2;
+	//para todos os vertices de mesmo nome que se encontram nas listas de adjacencia dos outros vertices, seto o estado como 2 tambem 
 	for (unsigned int i = 0; i < n_vertices(g); ++i)
     {
 		u = g->array[i].head;
@@ -865,8 +961,10 @@ void buscaProfundidade(listaVertices lista, listaVertices listaTrilhaT, grafo g,
 int arestaProcessada(vertice vert, vertice v, listaVertices lista)
 {	
 	vertice aux = lista->head;
+	//para cada vertice na lista de arestas, verifico se a aresta u-v ou v-u ja foi inserida
 	for(unsigned int i = lista->tam; i > 0; i-=2)
 	{	
+		//se sim, retorno verdadeiro
 		if(strcmp(aux->nome, vert->nome) == 0 && strcmp(aux->next->nome, v->nome) == 0)
 		{
 			return 1;
@@ -877,13 +975,14 @@ int arestaProcessada(vertice vert, vertice v, listaVertices lista)
 		}
 		aux = aux->next->next;
 	}
+	//se nao, retorno falso
 	return 0;
 }
 
 
 listaVertices inicialista(void)
 {
-	//aloco memoria para a lista 
+	//aloco memoria para a lista de vertices 
 	listaVertices fv = (listaVertices)malloc(sizeof(struct listaVertices));
 
 	fv->head = NULL;
@@ -894,7 +993,7 @@ listaVertices inicialista(void)
 
 void insereListaFinal(listaVertices lista, vertice vert)
 {
-
+	//insercao no final da lista encadeada
 	if(lista->head == NULL)
 	{
 		lista->head = vert;
@@ -914,7 +1013,8 @@ void insereListaFinal(listaVertices lista, vertice vert)
 }
 
 vertice retiraFinalLista(listaVertices lista)
-{	
+{		
+	//retiro o elemento que se encontra no final da lista encadeada
 	vertice aux = lista->head->next;
 	vertice temp = lista->head;
 	vertice copia;
@@ -943,6 +1043,7 @@ vertice retiraFinalLista(listaVertices lista)
 
 void mostraLista(listaVertices lista)
 {	
+	//mostro toda a lista encadeada passada como parametro
 	if(lista->head != NULL)
 	{
 		printf("---- lista ----\n");
@@ -958,6 +1059,7 @@ void mostraLista(listaVertices lista)
 
 void freeLista(listaVertices lista)
 {
+	//libero todos os nos da lista encadeada
 	if(lista->head == NULL)
 	{
 		return;
@@ -985,20 +1087,23 @@ void verificaCicloT(grafo g, listaVertices lista, listaVertices listaTrilhaT)
 	listaVertices copia = inicialista();
 
 
-	//removendo arestas do ciclo
+	//removendo arestas da lista de arestas. 
 	for(unsigned int i = lista->tam; i > 0; i-=2)
 	{	
+		//pegamos um vertice representante de cada aresta e salvamos na lista da trilha (vertices q foram percorridos em um ciclo)
 		v = retiraFinalLista(lista);
 		insereListaFinal(copia, v);
 
 		u = retiraFinalLista(lista);
+		//os dois ultimos vertices sao inseridos juntos
 		if(i == 2)
 		{
 			insereListaFinal(copia, u);
 		}
-
+		//removo a aresta v-u e u-v
 		removeAresta(g, v, u);
 	}
+	//tendo a lista de vertices percorridos no ciclo encontrado (copia), inserimos na lista de trilha geral
 	atualizaTrilha(copia, listaTrilhaT);
 	freeLista(copia);
 }
@@ -1007,6 +1112,7 @@ void verificaCicloT(grafo g, listaVertices lista, listaVertices listaTrilhaT)
 void atualizaTrilha(listaVertices copia, listaVertices listaTrilhaT)
 {
 	vertice v, aux, temp;
+	//se a lista de trilhas geral estiver vazia, copio todos os elementos da copia para esta
 	if(listaTrilhaT->head == NULL)
 	{
 		for(unsigned int i = copia->tam; i > 0; --i)
@@ -1016,6 +1122,10 @@ void atualizaTrilha(listaVertices copia, listaVertices listaTrilhaT)
 		}
 		freeLista(copia);
 	}
+	//se nao, tenho que verificar na lista de trilha geral a posicao do vertice com o mesmo nome do primeiro vertice da lista de copia. Insere 
+	//copia nessa posicao
+	//  a - b - e - a ->Geral   ///  b - c - d - b --> copia
+	// resultado: a - b - c - d - b - e - a
 	else
 	{
 		aux = listaTrilhaT->head;
@@ -1045,22 +1155,26 @@ void removeAresta(grafo g, vertice v, vertice u)
 {	
 	vertice vert, aux;
 	int removeu = 0;
+	//confiro em todo o grafo onde esta o vertice que quero remover uma aresta
 	for(unsigned i = 0; i < n_vertices(g); ++i)
 	{	
 		vert = g->array[i].head;
+		//se este vertice ainda tem vizinho...
 		if(vert)
-		{
+		{	
 			if((strcmp(vert->nome, v->nome) == 0))
 			{
+				//percorro toda sua lista ate encontrar o vertice que faz ponta para uma aresta
 				while(vert->next != NULL)
 				{	
 					if((strcmp(vert->next->nome, u->nome) == 0))
 					{
 						aux = vert->next;
 						vert->next = aux->next;
+						//libero o vertice da lista (excluo uma aresta)
 						free(aux->nome);					
 						free(aux);
-
+						//decremento o numero do grau do vertice
 						g->array[i].head->grau--;
 						removeu = 1;
 						break;
@@ -1075,6 +1189,7 @@ void removeAresta(grafo g, vertice v, vertice u)
 		}
 	}
 	removeu = 0;
+	//mesma ideia do for anterior
 	for(unsigned i = 0; i < n_vertices(g); ++i)
 	{	
 		vert = g->array[i].head;
@@ -1109,7 +1224,8 @@ void removeAresta(grafo g, vertice v, vertice u)
 }
 
 grafo clonaGrafo(grafo g)
-{
+{	
+	//dado um grafo g criado e alocado, crio um clone com todas as variaveis
 	grafo gClone = cria_grafo();
 
 	gClone->numV = n_vertices(g);
@@ -1135,6 +1251,7 @@ grafo clonaGrafo(grafo g)
 
 vertice copiaVertice(vertice v)
 {
+	//dado um vertice, crio um clone com toda sua estrutura
 	if(v != NULL)
 	{
 		vertice copia = cria_vertice_lista(v->nome, strlen(v->nome)+1);
@@ -1150,17 +1267,33 @@ vertice copiaVertice(vertice v)
 	return NULL;
 }
 
+vertice vertice_nome(grafo g, char *nome)
+{
+	//devolvo o vertice de nome -nome-
+	for (unsigned int i = 0; i < n_vertices(g); ++i)
+    {
+		if(strcmp(g->array[i].head->nome, nome) == 0)
+		{
+			return (copiaVertice(g->array[i].head));
+		}
+	}
+	return NULL;
+}
+
 char *nome(vertice v)
 {
+	//retorno o nome do vertice v
 	return (v->nome);
 }
 
 unsigned int n_vertices(grafo g)
-{
-	return g->numV;
+{	
+	//retorno numero de vertices do grafo
+	return (g->numV);
 }
 
 unsigned int n_arestas(grafo g)
 {
-	return g->numA;
+	//retorno numero de arestas
+	return (g->numA);
 }

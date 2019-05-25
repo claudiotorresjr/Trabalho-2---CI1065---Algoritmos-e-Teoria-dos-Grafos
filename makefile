@@ -13,6 +13,7 @@ CXXFLAGS = -Wctor-dtor-privacy \
 
 CPPFLAGS = -pipe \
 	   -ggdb3 -Wstrict-overflow=5 -fstack-protector-all \
+		 -g \
 	   -W -Wall -Wextra \
 	   -Wcast-align \
 	   -Wcast-qual \
