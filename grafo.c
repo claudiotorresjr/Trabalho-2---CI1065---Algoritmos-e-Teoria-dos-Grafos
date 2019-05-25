@@ -757,7 +757,7 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 					if(ehImpar != 1 || gCopia->componentes > 0)
 					{
 						char componente[12] = "compo nente";	
-						vertice aux = cria_vertice_lista(componente, 10);
+						vertice aux = cria_vertice_lista(componente, 12);
 						aux->coringa = 1;
 						insereListaFinal(listaTrilhaT, aux);
 					}	
@@ -777,7 +777,7 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 	if(gCopia->componentes > 0)
 	{
 		char componente[12] = "compo nente";	
-		vertice aux = cria_vertice_lista(componente, 10);
+		vertice aux = cria_vertice_lista(componente, 12);
 		aux->coringa = 1;
 		insereListaFinal(listaTrilhaT, aux);
 	}
