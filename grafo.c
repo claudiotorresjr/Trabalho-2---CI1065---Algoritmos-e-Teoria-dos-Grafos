@@ -356,7 +356,10 @@ void add_aresta(grafo g, char *verticeA, char *verticeB)
 		i++;
 	}
 	//incrementamos 1 no numero de arestas do grafo
-	g->numA++;
+	if(achou == 1)
+	{
+		g->numA++;
+	}
 }
 
 grafo cria_grafo(void)
@@ -757,7 +760,7 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 					if(ehImpar != 1 || gCopia->componentes > 0)
 					{
 						char componente[12] = "compo nente";	
-						vertice aux = cria_vertice_lista(componente, 12);
+						vertice aux = cria_vertice_lista(componente, 10);
 						aux->coringa = 1;
 						insereListaFinal(listaTrilhaT, aux);
 					}	
@@ -777,7 +780,7 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 	if(gCopia->componentes > 0)
 	{
 		char componente[12] = "compo nente";	
-		vertice aux = cria_vertice_lista(componente, 12);
+		vertice aux = cria_vertice_lista(componente, 10);
 		aux->coringa = 1;
 		insereListaFinal(listaTrilhaT, aux);
 	}
@@ -804,29 +807,37 @@ unsigned int cobertura_por_trilhas(grafo g, vertice **cobertura[])
 		vert = listaTrilhaT->head;
 	}
 
-	//pego todas as trilhas entre o vertice novo
-	for(i = 0; i < ehEuleriano + gCopia->componentes; ++i)
+	if(n_arestas(g) != 0)
 	{	
-		//ate encontrar o vertice coringa e enquanto nao tiver no final da lista, coloco o vertice na cobertura
-		for(j = 0; (vert->coringa != 1) && (vert->next != NULL); ++j)
+		//pego todas as trilhas entre o vertice novo
+		for(i = 0; i < ehEuleriano + gCopia->componentes; ++i)
 		{	
-			(*cobertura)[i][j] = copiaVertice(vert);
-			vert = vert->next;
+			//ate encontrar o vertice coringa e enquanto nao tiver no final da lista, coloco o vertice na cobertura
+			for(j = 0; (vert->coringa != 1) && (vert->next != NULL); ++j)
+			{	
+				(*cobertura)[i][j] = copiaVertice(vert);
+				vert = vert->next;
+			}
+			//ao preencher toda uma linha de vertices, se encontramos o vertice coringa, o pulamos (vert = vert->next) para que na proxima iteracao
+			//comece a adicionar por um vertice diferente do coringa. 
+			//atribuo NULL ao fim de cada linha da coertura
+			if(ehImpar == 1 || strcmp("compo nente", vert->nome) == 0)
+			{	
+				vert = vert->next;
+				(*cobertura)[i][j] = NULL;
+			}
+			else if(ehImpar != 1)
+				//se nao tiver coringa, coloco o ultimo vertice na cobertura e apos ele coloco NULL
+			{
+				(*cobertura)[i][j] = copiaVertice(vert);
+				(*cobertura)[i][j+1] = NULL;
+			}
 		}
-		//ao preencher toda uma linha de vertices, se encontramos o vertice coringa, o pulamos (vert = vert->next) para que na proxima iteracao
-		//comece a adicionar por um vertice diferente do coringa. 
-		//atribuo NULL ao fim de cada linha da coertura
-		if(ehImpar == 1 || strcmp("compo nente", vert->nome) == 0)
-		{	
-			vert = vert->next;
-			(*cobertura)[i][j] = NULL;
-		}
-		else if(ehImpar != 1)
-			//se nao tiver coringa, coloco o ultimo vertice na cobertura e apos ele coloco NULL
-		{
-			(*cobertura)[i][j] = copiaVertice(vert);
-			(*cobertura)[i][j+1] = NULL;
-		}
+	}
+	else
+	{
+		ehEuleriano = 0;
+		(*cobertura)[0][0] = NULL;
 	}
 
 	freeLista(listaTrilhaT);	
